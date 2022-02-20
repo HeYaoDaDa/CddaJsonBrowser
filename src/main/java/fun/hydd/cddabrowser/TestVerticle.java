@@ -115,11 +115,11 @@ public class TestVerticle extends AbstractVerticle {
     });
   }
 
+  static final String MODS_DIR_PATH = "/data/mods/";
   static final String[] JSON_DIR_PATHS = new String[]{
     "/data/core/",
     "/data/help/",
     "/data/json/",
-    "/data/mods/",
     "/data/raw/"};
 
   private Future<Void> copyEnOldDir() {
@@ -137,16 +137,25 @@ public class TestVerticle extends AbstractVerticle {
         e.printStackTrace();
       }
     }
+
+    if (!toDirFile.exists() && !toDirFile.mkdirs()) {
+      return Future.failedFuture("mkdirs " + toDirPath + " fail");
+    }
+
+    final String modsDirPath = Paths.get(repositoryPath, MODS_DIR_PATH).toFile().getPath();
+
     for (final String jsonDirPath : JSON_DIR_PATHS) {
       final String jsonDir = Paths.get(repositoryPath, jsonDirPath).toFile().getPath();
-      final File toDirDetailedFile = Paths.get(toDirPath, jsonDirPath.split("/")[2]).toFile();
+      final File toDirDetailedFile = Paths.get(toDirPath, "dda", jsonDirPath.split("/")[2]).toFile();
       final String toDetailedDirPath = toDirDetailedFile.getPath();
       if (!toDirDetailedFile.exists() && !toDirDetailedFile.mkdirs()) {
         return Future.failedFuture("mkdirs " + toDirPath + " fail");
       }
       futureList.add(fileSystem.copyRecursive(jsonDir, toDetailedDirPath, true));
     }
-    return CompositeFuture.join(futureList)
+
+    return fileSystem.copyRecursive(modsDirPath, toDirPath, true)
+      .compose(unused -> CompositeFuture.join(futureList))
       .compose(compositeFuture -> Future.succeededFuture());
   }
 }
