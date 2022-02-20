@@ -37,13 +37,7 @@ public class TestVerticle extends AbstractVerticle {
 
           if (dbTag == null) {
             logger.info("first version,start update json and save version");
-            //TODO process json
-            githubManager.getReleaseByTagName(latestTag.getName())
-              .onSuccess(myRelease -> {
-                NewVersion newVersion = VersionManager.createVersion(latestTag, myRelease);
-                versionManager.saveVersion(newVersion)
-                  .onSuccess(versionId -> logger.info("version is save success, tagName: {}, id is {}", latestTag.getName(), versionId));
-              });
+            processJson();
           } else if (latestTag.equals(dbTag)) {
             logger.info("latest tag equal db tag, no need update");
           } else if (latestTag.getDate().before(dbTag.getDate())) {
@@ -52,7 +46,8 @@ public class TestVerticle extends AbstractVerticle {
             logger.info("need update json");
             gitManager.getAfterTagList(dbTag.getDate())
               .onSuccess(myTags -> CommonUtil.chainCall(myTags, myTag -> gitManager.reset(myTag.getName())
-                .compose(unused -> processJson())));
+                .compose(unused -> processJson())
+              ));
           }
         })
       );
@@ -79,6 +74,7 @@ public class TestVerticle extends AbstractVerticle {
   private Future<MyTag> processJson() {
     return gitManager.getLatestTag()
       .compose(latestTag1 -> {
+        //TODO insert json
         logger.info("latest tag is {}", latestTag1);
         return gitManager.getHeadTag()
           .onSuccess(headTag -> logger.info("head tag is {}", headTag));
