@@ -10,11 +10,17 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.file.FileSystem;
 import io.vertx.core.json.JsonObject;
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TestVerticle extends AbstractVerticle {
   private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -50,7 +56,8 @@ public class TestVerticle extends AbstractVerticle {
               ));
           }
         })
-      );
+      )
+      .onFailure(event -> logger.info("error", event));
   }
 
   private CompositeFuture init() {
@@ -76,8 +83,8 @@ public class TestVerticle extends AbstractVerticle {
       .compose(latestTag1 -> {
         //TODO insert json
         logger.info("latest tag is {}", latestTag1);
-        return gitManager.getHeadTag()
-          .onSuccess(headTag -> logger.info("head tag is {}", headTag));
+        return prepareJson().compose(unused -> gitManager.getHeadTag()
+          .onSuccess(headTag -> logger.info("head tag is {}", headTag)));
       })
       .onSuccess(myTag -> githubManager.getReleaseByTagName(myTag.getName())
         .onSuccess(myRelease -> {
@@ -85,5 +92,61 @@ public class TestVerticle extends AbstractVerticle {
           versionManager.saveVersion(newVersion)
             .onSuccess(versionId -> logger.info("version is save success, tagName: {}, id is {}", myTag.getName(), versionId));
         }));
+  }
+
+  private Future<Void> prepareJson() {
+    return cleanOutDir()
+      .compose(unused -> copyEnOldDir())
+      .onFailure(event -> logger.error("error", event));
+  }
+
+  private Future<Void> cleanOutDir() {
+    JsonObject repository = config().getJsonObject("repository");
+    String outPath = System.getProperty("user.home") + File.separator + repository.getString("name") + File.separator + "out";
+    return vertx.executeBlocking(promise -> {
+      try {
+        if (new File(outPath).exists()) {
+          FileUtils.cleanDirectory(outPath);
+        }
+        promise.complete();
+      } catch (IOException e) {
+        promise.fail(e);
+      }
+    });
+  }
+
+  static final String[] JSON_DIR_PATHS = new String[]{
+    "/data/core/",
+    "/data/help/",
+    "/data/json/",
+    "/data/mods/",
+    "/data/raw/"};
+
+  private Future<Void> copyEnOldDir() {
+    JsonObject repository = config().getJsonObject("repository");
+    String repositoryPath = System.getProperty("user.home") + File.separator + repository.getString("name");
+    String outPath = repositoryPath + File.separator + "out";
+    final FileSystem fileSystem = vertx.fileSystem();
+    @SuppressWarnings("rawtypes") final List<Future> futureList = new ArrayList<>();
+    final String toDirPath = outPath + File.separator + "en" + File.separator + "old";
+    final File toDirFile = new File(toDirPath);
+    if (toDirFile.exists()) {
+      try {
+        FileUtils.deleteDirectory(toDirFile);
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    }
+    for (final String jsonDirPath : JSON_DIR_PATHS) {
+      final String jsonDir = Paths.get(repositoryPath, jsonDirPath).toFile().getPath();
+      final File toDirDetailedFile = Paths.get(toDirPath, jsonDirPath.split("/")[2]).toFile();
+      final String toDetailedDirPath = toDirDetailedFile.getPath();
+      if (!toDirDetailedFile.exists() && !toDirDetailedFile.mkdirs()) {
+        return Future.failedFuture("mkdirs " + toDirPath + " fail");
+      }
+      futureList.add(fileSystem.copyRecursive(jsonDir, toDetailedDirPath, true));
+    }
+    return CompositeFuture.join(futureList)
+      .compose(compositeFuture -> Future.succeededFuture());
   }
 }
