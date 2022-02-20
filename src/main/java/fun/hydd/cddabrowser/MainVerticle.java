@@ -4,12 +4,14 @@ import fun.hydd.cddabrowser.entity.JsonEntry;
 import fun.hydd.cddabrowser.entity.Version;
 import fun.hydd.cddabrowser.exception.NoNeedUpdateException;
 import fun.hydd.cddabrowser.utils.FileUtil;
+import fun.hydd.cddabrowser.utils.GitManager;
 import fun.hydd.cddabrowser.utils.HttpUtil;
 import fun.hydd.cddabrowser.utils.JsonEntryUtil;
 import fun.hydd.cddabrowser.utils.JsonUtil;
 import fun.hydd.cddabrowser.utils.MongoDBUtil;
 import fun.hydd.cddabrowser.utils.VersionUtil;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
@@ -20,6 +22,8 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class MainVerticle extends AbstractVerticle {
@@ -27,18 +31,26 @@ public class MainVerticle extends AbstractVerticle {
   private static final String MONGODB_URL = "mongodb://127.0.0.1:27017";
   private static final String COLLECTION_TEST = "test";
 
-  private final Logger logger = LoggerFactory.getLogger(getClass());
+  private static final Logger log = LoggerFactory.getLogger(MainVerticle.class);
   private String translateDirPath;
   private Version latestVersion;
 
   @Override
   public void start(Promise<Void> startPromise) {
-    final JsonObject mongoConfig = new JsonObject()
-      .put("connection_string", MONGODB_URL)
-      .put("db_name", COLLECTION_TEST);
-    MongoClient.createShared(this.vertx, mongoConfig);
-    vertx.setTimer(1000L, aLong -> timedUpdateGameData());
-    startPromise.complete();
+//    final JsonObject mongoConfig = new JsonObject()
+//      .put("connection_string", MONGODB_URL)
+//      .put("db_name", COLLECTION_TEST);
+//    MongoClient.createShared(this.vertx, mongoConfig);
+//    vertx.setTimer(1000L, aLong -> timedUpdateGameData());
+//    startPromise.complete();
+    vertx.deployVerticle(new GitManager(), new DeploymentOptions().setWorker(true).setMaxWorkerExecuteTime(30).setMaxWorkerExecuteTimeUnit(TimeUnit.MINUTES))
+      .onSuccess(event -> {
+        String testRepoPath = Objects.requireNonNull(MainVerticle.class.getClassLoader().getResource("")).getPath();
+        testRepoPath += File.separator + "Cataclysm-DDA-test";
+        JsonObject jsonObject = new JsonObject().put("repoName", testRepoPath).put("repoUrl", "https://github.com/HeYaoDaDa/Cataclysm-DDA.git");
+        vertx.eventBus().request("git-manager.init", jsonObject).onComplete(event1 -> log.info("git-manager.init is reply!"));
+        startPromise.complete();
+      });
   }
 
   private void timedUpdateGameData() {
@@ -63,14 +75,14 @@ public class MainVerticle extends AbstractVerticle {
         "}").mapTo(Version.class))
       .onSuccess(o -> translateDirPath = FileUtil.getTranslateDirPath() + latestVersion.getTagName())
 //      .compose(unused -> this.processGameJsonFile())
-      .onSuccess(jsonEntryList -> logger.info("processGameJsonFile success"))
+      .onSuccess(jsonEntryList -> log.info("processGameJsonFile success"))
       .compose(unused -> this.processOriginalJsonEntry())
-      .onSuccess(unused -> logger.info("SAVE VERSION"))
+      .onSuccess(unused -> log.info("SAVE VERSION"))
       .onFailure(throwable -> {
         if (throwable instanceof NoNeedUpdateException) {
-          this.logger.warn(throwable.getMessage());
+          this.log.warn(throwable.getMessage());
         } else {
-          this.logger.error("TimedUpdateVersion() is fail:\n", throwable);
+          this.log.error("TimedUpdateVersion() is fail:\n", throwable);
         }
       });
   }
@@ -98,7 +110,7 @@ public class MainVerticle extends AbstractVerticle {
       return Future.succeededFuture();
     }
     String mod = sortedModList.remove(0);
-    logger.info("start process {},mod is {}", collection, mod);
+    log.info("start process {},mod is {}", collection, mod);
     return JsonEntryUtil.getNeedProcessInheritJsonObjectByMod(mongoClient, collection, latestVersion, mod)
       .compose(jsonObjectList -> Future.succeededFuture(jsonObjectList.stream()
         .map(jsonObject -> {
@@ -124,17 +136,17 @@ public class MainVerticle extends AbstractVerticle {
     if (file.isDirectory() || !JsonUtil.isJsonFile(file) || JsonUtil.isIgnoreJsonFile(file)) {
       return Future.succeededFuture();
     }
-    logger.info("process file is {}", file);
+    log.info("process file is {}", file);
     MongoClient mongoClient = MongoClient.createShared(vertx, new JsonObject());
     return vertx.fileSystem().readFile(file.getAbsolutePath())
       .compose(buffer -> MongoDBUtil.escapeBsonField(buffer, vertx))
       .compose(buffer -> {
         List<JsonObject> jsonObjectList = JsonUtil.bufferToJsonObjectList(buffer);
         return JsonEntryUtil.processNewJsonEntryListByJsonObjectList(mongoClient,
-            JsonEntryUtil.parserLanguage(file),
-            latestVersion,
-            JsonEntryUtil.parserRelativePath(file, latestVersion),
-            jsonObjectList)
+          JsonEntryUtil.parserLanguage(file),
+          latestVersion,
+          JsonEntryUtil.parserRelativePath(file, latestVersion),
+          jsonObjectList)
           .compose(stringListMap -> MongoDBUtil.bulkWriteBulkOperationListMap(mongoClient, stringListMap));
       });
   }

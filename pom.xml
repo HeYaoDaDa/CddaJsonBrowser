@@ -19,7 +19,7 @@
     <vertx.version>4.2.1</vertx.version>
     <junit-jupiter.version>5.8.1</junit-jupiter.version>
 
-    <main.verticle>fun.hydd.cddabrowser.MainVerticle</main.verticle>
+    <main.verticle>fun.hydd.cddabrowser.NewMainVerticle</main.verticle>
     <launcher.class>io.vertx.core.Launcher</launcher.class>
   </properties>
 

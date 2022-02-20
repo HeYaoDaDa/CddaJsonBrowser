@@ -1,9 +1,11 @@
 package fun.hydd.cddabrowser.utils;
 
-import fun.hydd.cddabrowser.entity.Tag;
-import org.eclipse.jgit.api.FetchCommand;
+import fun.hydd.cddabrowser.entity.MyTag;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.Future;
+import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.json.JsonObject;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.PullResult;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
@@ -29,14 +31,26 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class GitManager {
+public class GitManager extends AbstractVerticle {
   private final Logger log = LoggerFactory.getLogger(GitManager.class);
   private Git git;
+  private String repositoryUrl;
 
-  public GitManager() throws IOException, GitAPIException {
-    log.info("start initRepository()");
-    String usrHome = System.getProperty("user.home");
-    File repositoryDir = Paths.get(usrHome, fun.hydd.cddabrowser.Constants.REPOSITORY_CDDA).toFile();
+  @Override
+  public void start() throws Exception {
+    super.start();
+    log.info("GitManager start");
+    EventBus eventBus = vertx.eventBus();
+    eventBus.consumer("git-manager.init", event -> {
+      JsonObject jsonObject = (JsonObject) event.body();
+      init(jsonObject.getString("repoName"), jsonObject.getString("repoUrl")).onSuccess(event1 -> event.reply("ok!")).onFailure(event1 -> log.info("init fail !!!"));
+    });
+  }
+
+  public Future<Void> init(String repositoryName, String repositoryUrl) {
+    log.info("start init GitManager");
+    this.repositoryUrl = repositoryUrl;
+    File repositoryDir = new File(repositoryName);
     if (repositoryDir.exists()) {
       log.info("repositoryDir '{}' exist", repositoryDir);
       FileRepositoryBuilder fileRepositoryBuilder = new FileRepositoryBuilder();
@@ -50,6 +64,9 @@ public class GitManager {
       ) {
         log.info("find repository: {}", repository.getDirectory());
         this.git = new Git(repository);
+        return Future.succeededFuture();
+      } catch (IOException e) {
+        return Future.failedFuture(e);
       }
     } else {
       if (repositoryDir.mkdir()) {
@@ -57,16 +74,20 @@ public class GitManager {
         try (
           Git newGit = Git.cloneRepository()
             .setDirectory(repositoryDir)
-            .setURI(fun.hydd.cddabrowser.Constants.URL_REPOSITORY_GIT_CDDA)
+            .setURI(this.repositoryUrl)
             .setBranch("master")
             .call()
         ) {
           Repository repository = newGit.getRepository();
           log.info("clone repository: {}", repository.getDirectory());
           this.git = new Git(repository);
+          return Future.succeededFuture();
+        } catch (GitAPIException e) {
+          return Future.failedFuture(e);
         }
       } else {
         log.info("repositoryDir '{}' mkdir fail", repositoryDir);
+        return Future.failedFuture("repositoryDir '" + repositoryDir + "' mkdir fail");
       }
     }
   }
@@ -90,7 +111,7 @@ public class GitManager {
   public List<Ref> getLocalNoHasRemoteTagRefList() throws GitAPIException {
     log.info("start getLocalNoHasRemoteTagRefList()");
     Collection<Ref> remoteRefs = git.lsRemote()
-      .setRemote(fun.hydd.cddabrowser.Constants.URL_REPOSITORY_GIT_CDDA)
+      .setRemote(this.repositoryUrl)
       .setTags(true)
       .call();
     log.info("remoteRefs size is {}", remoteRefs.size());
@@ -116,7 +137,7 @@ public class GitManager {
     return git.getRepository().getRefDatabase().findRef(Constants.R_HEADS + Constants.MASTER);
   }
 
-  public Tag getHeadTag() throws IOException {
+  public MyTag getHeadTag() throws IOException {
     log.info("start getHeadTag()");
     Ref headRef = getHeadRef();
     log.info("\theadRef is {}", headRef);
@@ -130,7 +151,7 @@ public class GitManager {
     return getTagByTagRef(headTagRef);
   }
 
-  public Tag getLatestTag() throws IOException {
+  public MyTag getLatestTag() throws IOException {
     log.info("start getLatestTag()");
     Ref latestTagRef = getLatestTagRef();
     if (latestTagRef == null) {
@@ -160,22 +181,22 @@ public class GitManager {
     return result;
   }
 
-  public Tag getTagByTagRef(Ref tagRef) throws IOException {
-    Tag tag = new Tag();
+  public MyTag getTagByTagRef(Ref tagRef) throws IOException {
+    MyTag myTag = new MyTag();
     try (RevWalk revWalk = new RevWalk(git.getRepository())) {
       RevObject revObject = revWalk.parseAny(tagRef.getObjectId());
       if (Constants.OBJ_TAG == revObject.getType()) {
         RevTag revTag = (RevTag) revObject;
-        tag.setName(revTag.getTagName());
-        tag.setDate(revTag.getTaggerIdent().getWhen());
-        tag.setMessage(revTag.getFullMessage());
+        myTag.setName(revTag.getTagName());
+        myTag.setDate(revTag.getTaggerIdent().getWhen());
+        myTag.setMessage(revTag.getFullMessage());
       } else if (Constants.OBJ_COMMIT == revObject.getType()) {
         RevCommit revCommit = (RevCommit) revObject;
-        tag.setName(Repository.shortenRefName(tagRef.getName()));
-        tag.setDate(revCommit.getAuthorIdent().getWhen());
+        myTag.setName(Repository.shortenRefName(tagRef.getName()));
+        myTag.setDate(revCommit.getAuthorIdent().getWhen());
       }
     }
-    return tag;
+    return myTag;
   }
 
   private Date getTagRefDate(Ref tagRef) {

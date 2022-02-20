@@ -1,3 +1,7 @@
 {
-  "test": "Hello world"
+  "test": "Hello world",
+  "repository": {
+    "name": "Cataclysm-DDA",
+    "url": "https://github.com/CleverRaven/Cataclysm-DDA.git"
+  }
 }

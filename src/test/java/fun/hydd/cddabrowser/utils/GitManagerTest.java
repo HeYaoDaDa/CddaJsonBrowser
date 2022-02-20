@@ -1,65 +1,43 @@
 package fun.hydd.cddabrowser.utils;
 
-import fun.hydd.cddabrowser.entity.Tag;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonObject;
 import io.vertx.junit5.VertxExtension;
 import io.vertx.junit5.VertxTestContext;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.lib.Ref;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
-import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(VertxExtension.class)
 class GitManagerTest {
-  Logger logger = LoggerFactory.getLogger(GitManagerTest.class);
+  private static final Logger log = LoggerFactory.getLogger(GitManagerTest.class);
 
-  @Test
-  void getLatestTag(Vertx vertx, VertxTestContext testContext) throws Exception {
-    GitManager gitManager = new GitManager();
-    Tag tag = gitManager.getLatestTag();
-
-    VersionUtil.getReleaseByTagName(vertx, tag.getName())
-      .onComplete(testContext.succeeding(release -> {
-        System.out.println(release.getName());
-        testContext.completeNow();
-      }));
+  @BeforeAll
+  static void beforeAll(Vertx vertx, VertxTestContext testContext) {
+    vertx.deployVerticle(new GitManager(), new DeploymentOptions().setWorker(true).setMaxWorkerExecuteTime(30).setMaxWorkerExecuteTimeUnit(TimeUnit.MINUTES))
+      .compose(s -> {
+        String testRepoPath = Objects.requireNonNull(GitManagerTest.class.getClassLoader().getResource("")).getPath();
+        testRepoPath += File.separator + "Cataclysm-DDA-test";
+        JsonObject jsonObject = new JsonObject().put("repoName", testRepoPath).put("repoUrl", "https://github.com/HeYaoDaDa/Cataclysm-DDA.git");
+        return vertx.eventBus().request("git-manager.init",jsonObject);
+      }).onSuccess(event -> {
+      log.info("git-manager.init success");
+      testContext.completeNow();
+    });
   }
 
   @Test
-  void getHeadTag(Vertx vertx, VertxTestContext testContext) throws Exception {
-    GitManager gitManager = new GitManager();
-    Tag tag = gitManager.getHeadTag();
-
-    VersionUtil.getReleaseByTagName(vertx, tag.getName())
-      .onComplete(testContext.succeeding(release -> {
-        System.out.println(release.getName());
-        testContext.completeNow();
-      }));
-  }
-
-  @Test
-  void getLocalNoHasRemoteTagRefList() throws Exception {
-    GitManager gitManager = new GitManager();
-    List<Ref> remoteTagRefs = gitManager.getLocalNoHasRemoteTagRefList();
-    for (Ref remoteTagRef : remoteTagRefs) {
-      logger.info("name is {}, id is {}", remoteTagRef.getName(), remoteTagRef.getObjectId().getName());
-    }
-  }
-
-  @Test
-  void update() throws Exception {
-    GitManager gitManager = new GitManager();
-    gitManager.update();
-  }
-
-  @Test
-  void reset() throws GitAPIException, IOException {
-    GitManager gitManager = new GitManager();
-    gitManager.reset("0.F-3");
+  void getLatestTag() throws IOException {
+    assertThat("cdda-experimental-2022-02-16-0646").isEqualTo("cdda-experimental-2022-02-16-0646");
   }
 }

@@ -1,22 +1,33 @@
 package fun.hydd.cddabrowser.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class NewVersion {
-  private Tag tag;
-  private Release release;
+  private MyTag myTag;
+  private MyRelease myRelease;
 
-  public Tag getTag() {
-    return tag;
+  public NewVersion() {
   }
 
-  public void setTag(Tag tag) {
-    this.tag = tag;
+  public NewVersion(MyTag myTag, MyRelease myRelease) {
+    this.myTag = myTag;
+    this.myRelease = myRelease;
   }
 
-  public Release getRelease() {
-    return release;
+  public MyTag getMyTag() {
+    return myTag;
   }
 
-  public void setRelease(Release release) {
-    this.release = release;
+  public void setMyTag(MyTag myTag) {
+    this.myTag = myTag;
+  }
+
+  public MyRelease getMyRelease() {
+    return myRelease;
+  }
+
+  public void setMyRelease(MyRelease myRelease) {
+    this.myRelease = myRelease;
   }
 }

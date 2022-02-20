@@ -2,8 +2,7 @@ package fun.hydd.cddabrowser.utils;
 
 import fun.hydd.cddabrowser.Constants;
 import fun.hydd.cddabrowser.MainVerticle;
-import fun.hydd.cddabrowser.entity.NewVersion;
-import fun.hydd.cddabrowser.entity.Release;
+import fun.hydd.cddabrowser.entity.MyRelease;
 import fun.hydd.cddabrowser.entity.Version;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -27,7 +26,7 @@ public class VersionUtil {
   private VersionUtil() {
   }
 
-  public static Future<Release> getReleaseByTagName(Vertx vertx, String tagName) {
+  public static Future<MyRelease> getReleaseByTagName(Vertx vertx, String tagName) {
     String uri = "/repos/" + Constants.USER_CDDA + "/" + Constants.REPOSITORY_CDDA + "/releases/tags/" + tagName;
     return HttpUtil.request(vertx,
       new RequestOptions()
@@ -42,8 +41,8 @@ public class VersionUtil {
       if (jsonObject.isEmpty()) {
         return Future.failedFuture("fillReleaseInfo(),jsonArray is Empty");
       }
-      Release release = jsonObject.mapTo(Release.class);
-      return Future.succeededFuture(release);
+      MyRelease myRelease = jsonObject.mapTo(MyRelease.class);
+      return Future.succeededFuture(myRelease);
     });
   }
 

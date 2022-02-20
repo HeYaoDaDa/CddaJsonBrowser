@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Date;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Release {
+public class MyRelease {
   @JsonProperty("id")
   private String id;
   @JsonProperty("name")

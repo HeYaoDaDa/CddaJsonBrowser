@@ -141,11 +141,11 @@ Temporary Items
 
 ### Maven ###
 target/
-pom.xml.tag
+pom.xml.myTag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 pom.xml.next
-release.properties
+myRelease.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
