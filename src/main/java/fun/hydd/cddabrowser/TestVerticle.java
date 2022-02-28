@@ -12,6 +12,10 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.file.FileSystem;
 import io.vertx.core.json.JsonObject;
+import jep.Interpreter;
+import jep.JepConfig;
+import jep.MainInterpreter;
+import jep.SharedInterpreter;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +24,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class TestVerticle extends AbstractVerticle {
   private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -96,7 +102,9 @@ public class TestVerticle extends AbstractVerticle {
 
   private Future<Void> prepareJson() {
     return cleanOutDir()
-      .compose(unused -> copyEnOldDir())
+      .compose(unused -> copyNewEnOldDir())
+      .compose(unused -> processInherit())
+      .compose(unused -> processTranslate())
       .onFailure(event -> logger.error("error", event));
   }
 
@@ -121,6 +129,71 @@ public class TestVerticle extends AbstractVerticle {
     "/data/help/",
     "/data/json/",
     "/data/raw/"};
+
+  private Future<Void> copyNewEnOldDir() {
+    return vertx
+      .createSharedWorkerExecutor("testWorkerExecutor", 5, 5, TimeUnit.MINUTES)
+      .executeBlocking(promise -> {
+        JepConfig jepConfig = new JepConfig();
+        MainInterpreter.setJepLibraryPath("C:\\Users\\30501\\AppData\\Local\\Programs\\Python\\Python310\\Lib\\site-packages\\jep\\jep.dll");
+        jepConfig.addIncludePaths("C:\\Users\\30501\\Documents\\VsCodeProject");
+        jepConfig.addIncludePaths("C:\\Users\\30501\\Documents\\VsCodeProject\\CDDAJsonInheritProcess");
+        jepConfig.addIncludePaths("C:\\Users\\30501\\Documents\\VsCodeProject\\CDDAJsonTranslate");
+        jepConfig.redirectStdout(System.out);
+        jepConfig.redirectStdErr(System.err);
+        SharedInterpreter.setConfig(jepConfig);
+        try (Interpreter interp = new SharedInterpreter()) {
+          interp.exec("from CddaModExtractor import extractor");
+
+          JsonObject repository = config().getJsonObject("repository");
+          String repositoryPath = System.getProperty("user.home") + File.separator + repository.getString("name");
+          String dataPath = repositoryPath + File.separator + "data";
+          String outPath = repositoryPath + File.separator + "out" + File.separator + "en" + File.separator + "old";
+          interp.set("data_path", dataPath);
+          interp.set("out_path", outPath);
+          interp.exec("x = extractor(data_path, out_path)");
+          promise.complete();
+        }
+      });
+  }
+
+  private Future<Void> processInherit() {
+    return vertx
+      .createSharedWorkerExecutor("testWorkerExecutor", 5, 5, TimeUnit.MINUTES)
+      .executeBlocking(promise -> {
+        try (Interpreter interp = new SharedInterpreter()) {
+          interp.exec("from json_inherit_process import process_game");
+          JsonObject repository = config().getJsonObject("repository");
+          String repositoryPath = System.getProperty("user.home") + File.separator + repository.getString("name");
+          String dataPath = repositoryPath + File.separator + "out" + File.separator + "en" + File.separator + "old";
+          String outPath = repositoryPath + File.separator + "out" + File.separator + "en" + File.separator + "new";
+          interp.set("data_path", dataPath);
+          interp.set("out_path", outPath);
+          interp.exec("process_game(data_path, out_path)");
+          promise.complete();
+        }
+      });
+  }
+
+  private Future<Void> processTranslate() {
+    return vertx
+      .createSharedWorkerExecutor("testWorkerExecutor2", 5, 15, TimeUnit.MINUTES)
+      .executeBlocking(promise -> {
+        try (Interpreter interp = new SharedInterpreter()) {
+          interp.exec("from string_translate import translate_data");
+          JsonObject repository = config().getJsonObject("repository");
+          String repositoryPath = System.getProperty("user.home") + File.separator + repository.getString("name");
+          String dataPath = repositoryPath + File.separator + "out" + File.separator + "en";
+          String outPath = repositoryPath + File.separator + "out";
+          String moPath = repositoryPath + File.separator + "lang" + File.separator + "mo";
+          interp.set("data_paths", Arrays.asList(dataPath));
+          interp.set("out_path", outPath);
+          interp.set("mo_path", moPath);
+          interp.exec("translate_data(data_paths, out_path, mo_path)");
+          promise.complete();
+        }
+      });
+  }
 
   private Future<Void> copyEnOldDir() {
     JsonObject repository = config().getJsonObject("repository");
